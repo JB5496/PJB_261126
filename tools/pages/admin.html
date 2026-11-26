@@ -7,6 +7,21 @@
 <link rel="stylesheet" href="../assets/style.css">
 <style>
   .state { color: var(--muted); font-size: var(--fs-small); margin: 0 0 var(--s3); }
+  .org-top { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); margin-bottom: var(--s3); }
+  .org-top label, .team-head label { display: block; margin-bottom: 6px; font-weight: 600; }
+  .org-top input, .team-head input { width: 100%; }
+  .team { border: 1px dashed var(--dash); border-radius: 8px; padding: var(--s3); margin-bottom: var(--s3); }
+  .team-head { display: grid; grid-template-columns: 1.4fr 110px auto; gap: var(--s2); align-items: end; margin-bottom: var(--s2); }
+  .person { display: grid; grid-template-columns: 32px 1fr 1fr; gap: var(--s2); align-items: center; margin-bottom: var(--s2); }
+  .person .no { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+  .org-total { font-weight: 700; margin: var(--s2) 0; }
+  .privacy { color: var(--muted); font-size: var(--fs-small); margin: 0 0 var(--s3); }
+  @media (max-width: 640px) {
+    .org-top { grid-template-columns: 1fr; }
+    .team-head { grid-template-columns: 1fr 90px; }
+    .team-head .danger { grid-column: 1 / -1; }
+    .person { grid-template-columns: 24px 1fr 1fr; gap: 6px; }
+  }
 </style>
 </head>
 <body>
@@ -15,7 +30,7 @@
     <h1><span class="accent">자료관리</span> (관리자용)</h1>
     <span class="practice-tag">LH 실습용 · 가상 자료</span>
   </div>
-  <p class="sub">표본·백업 가져오기, 가상 표본 채우기, 백업 내보내기, 비우기를 합니다. 비우기는 되돌릴 수 없으니 먼저 백업을 내보내십시오.</p>
+  <p class="sub">조직 설정, 표본·백업 가져오기, 가상 표본 채우기, 백업 내보내기, 비우기를 합니다. 비우기는 되돌릴 수 없으니 먼저 백업을 내보내십시오.</p>
 
   <nav class="menu" aria-label="메뉴">
     <a href="../index.html">시작</a>
@@ -37,6 +52,23 @@
     </div>
     <div class="msg" id="manageMsg" role="status" aria-live="polite" hidden></div>
   </div>
+
+  <div class="card">
+    <h2><span class="accent">조직</span> 설정</h2>
+    <p class="privacy">입력한 이름·직책은 이 브라우저와 백업 파일에만 저장되고, 배포된 웹앱이나 저장소에는 올라가지 않습니다. 다른 PC에서 쓰려면 위 '백업 내보내기'로 받은 파일을 그 PC에서 '가져오기' 하십시오. 저장하면 지금 부서원 명단이 이 설정으로 바뀝니다.</p>
+    <div class="org-top">
+      <div><label for="orgDept">부서 이름</label><input id="orgDept" type="text" maxlength="30" placeholder="예: 경영지원부"></div>
+      <div><label for="orgFriday">대상 금요일</label><input id="orgFriday" type="date"></div>
+    </div>
+    <div id="teamList"></div>
+    <div class="row">
+      <button type="button" id="addTeamBtn">팀 추가</button>
+      <button type="button" id="resetOrgBtn">저장된 상태로 되돌리기</button>
+    </div>
+    <p class="org-total" id="orgTotal"></p>
+    <div class="row"><button type="button" class="primary" id="saveOrgBtn">조직 저장</button></div>
+    <div class="msg" id="orgMsg" role="status" aria-live="polite" hidden></div>
+  </div>
 </div>
 <script src="../assets/common.js"></script>
 <script>
@@ -44,8 +76,8 @@
   'use strict';
   function $(id) { return document.getElementById(id); }
 
-  function showMsg(text, kind) {
-    var el = $('manageMsg');
+  function showMsg(text, kind, id) {
+    var el = $(id || 'manageMsg');
     el.textContent = text;
     el.className = 'msg ' + kind;
     el.hidden = false;
@@ -73,7 +105,7 @@
     var copy = JSON.parse(JSON.stringify(SAMPLE));
     if (!saveData(copy)) { showMsg('이 브라우저에서는 저장할 수 없습니다.', 'error'); return; }
     showMsg('가상 표본을 채웠습니다. 부서원 ' + copy.members.length + '명, 근태 ' + copy.attendance.length + '건', 'ok');
-    renderState();
+    renderState(); loadOrg(); renderOrg();
   });
 
   $('importBtn').addEventListener('click', function () { $('importFile').click(); });
@@ -83,7 +115,7 @@
     if (!file) { return; }
     importJson(file).then(function (r) {
       showMsg(r.message, r.ok ? 'ok' : 'error');
-      renderState();
+      renderState(); loadOrg(); renderOrg();
     });
   });
   $('exportBtn').addEventListener('click', function () {
@@ -94,9 +126,200 @@
     if (!window.confirm('저장된 자료를 모두 지우시겠습니까? 필요하면 먼저 백업을 내보내십시오.')) { return; }
     clearData();
     showMsg('자료를 비웠습니다. 가져오기로 표본을 다시 불러올 수 있습니다.', 'ok');
-    renderState();
+    renderState(); loadOrg(); renderOrg();
   });
 
+  /* ---- 조직 설정: 부서 이름·팀·팀별 인원(이름·직책)을 입력해 부서원 명단(members)으로 저장 ---- */
+  var org = { dept: '', friday: '', teams: [] };
+  var orgWasMulti = false;
+
+  function blankPerson() { return { id: '', name: '', position: '', trainee: false }; }
+
+  function loadOrg() {
+    var d = loadData();
+    var depts = [];
+    d.members.forEach(function (m) {
+      if (m && typeof m.dept === 'string' && depts.indexOf(m.dept) < 0) { depts.push(m.dept); }
+    });
+    org = { dept: '', friday: d.targetFriday || '', teams: [] };
+    orgWasMulti = depts.length > 1;
+    if (depts.length !== 1) { return; }
+    org.dept = depts[0];
+    var idx = Object.create(null);
+    d.members.forEach(function (m) {
+      if (!m || typeof m.id !== 'string') { return; }
+      var tn = typeof m.team === 'string' && m.team !== '' ? m.team : '팀 없음';
+      if (!(tn in idx)) { idx[tn] = org.teams.length; org.teams.push({ name: tn, people: [] }); }
+      org.teams[idx[tn]].people.push({
+        id: m.id,
+        name: typeof m.name === 'string' ? m.name : '',
+        position: typeof m.position === 'string' ? m.position : '',
+        trainee: m.trainee === true
+      });
+    });
+  }
+
+  function mk(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) { e.className = cls; }
+    if (text !== undefined) { e.textContent = text; }
+    return e;
+  }
+
+  function field(labelText, input, id) {
+    var wrap = mk('div');
+    var lb = mk('label', '', labelText);
+    input.id = id;
+    lb.setAttribute('for', id);
+    wrap.appendChild(lb);
+    wrap.appendChild(input);
+    return wrap;
+  }
+
+  function orgCount() {
+    var n = 0;
+    org.teams.forEach(function (t) { n += t.people.length; });
+    return n;
+  }
+
+  function renderTotal() {
+    $('orgTotal').textContent = '총 ' + org.teams.length + '개 팀 · ' + orgCount() + '명';
+  }
+
+  function setCount(ti, n) {
+    var t = org.teams[ti];
+    n = Math.floor(Number(n));
+    if (!isFinite(n) || n < 1) { n = 1; }
+    if (n > 100) { n = 100; }
+    if (n < t.people.length) {
+      var filled = t.people.slice(n).some(function (p) { return p.name !== '' || p.position !== ''; });
+      if (filled && !window.confirm('줄어드는 인원의 이름·직책 입력이 지워집니다. 줄이시겠습니까?')) { renderOrg(); return; }
+      t.people.length = n;
+    }
+    while (t.people.length < n) { t.people.push(blankPerson()); }
+    renderOrg();
+  }
+
+  function renderOrg() {
+    $('orgDept').value = org.dept;
+    $('orgFriday').value = org.friday;
+    var box = $('teamList');
+    box.textContent = '';
+    org.teams.forEach(function (t, ti) {
+      var card = mk('div', 'team');
+      var head = mk('div', 'team-head');
+      var nameIn = mk('input'); nameIn.type = 'text'; nameIn.maxLength = 30; nameIn.placeholder = '예: 1팀'; nameIn.value = t.name;
+      nameIn.addEventListener('input', function () { t.name = nameIn.value; });
+      head.appendChild(field('팀 이름', nameIn, 'teamName' + ti));
+      var cnt = mk('input'); cnt.type = 'number'; cnt.min = '1'; cnt.max = '100'; cnt.step = '1'; cnt.value = String(t.people.length);
+      cnt.addEventListener('change', function () { setCount(ti, cnt.value); });
+      head.appendChild(field('인원 수', cnt, 'teamCount' + ti));
+      var del = mk('button', 'danger', '팀 삭제'); del.type = 'button';
+      del.addEventListener('click', function () {
+        var filled = t.people.some(function (p) { return p.name !== '' || p.position !== ''; });
+        if (filled && !window.confirm('이 팀의 입력을 지우시겠습니까?')) { return; }
+        org.teams.splice(ti, 1);
+        renderOrg();
+      });
+      head.appendChild(del);
+      card.appendChild(head);
+      t.people.forEach(function (p, pi) {
+        var row = mk('div', 'person');
+        row.appendChild(mk('span', 'no', String(pi + 1)));
+        var n = mk('input'); n.type = 'text'; n.maxLength = 30; n.placeholder = '이름'; n.value = p.name;
+        n.setAttribute('aria-label', (t.name || '팀 ' + (ti + 1)) + ' ' + (pi + 1) + '번 이름');
+        n.addEventListener('input', function () { p.name = n.value; });
+        var po = mk('input'); po.type = 'text'; po.maxLength = 30; po.placeholder = '직책'; po.value = p.position;
+        po.setAttribute('aria-label', (t.name || '팀 ' + (ti + 1)) + ' ' + (pi + 1) + '번 직책');
+        po.addEventListener('input', function () { p.position = po.value; });
+        row.appendChild(n); row.appendChild(po);
+        card.appendChild(row);
+      });
+      box.appendChild(card);
+    });
+    renderTotal();
+  }
+
+  function nextId(used) {
+    var n = 1, id;
+    do { id = 'E' + ('000' + n).slice(-3); n += 1; } while (used[id]);
+    used[id] = true;
+    return id;
+  }
+
+  function orgProblem() {
+    if (org.dept.trim() === '') { return '부서 이름을 입력하십시오.'; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(org.friday)) { return '대상 금요일을 선택하십시오.'; }
+    if (org.teams.length === 0) { return '팀을 하나 이상 추가하십시오.'; }
+    var seen = Object.create(null);
+    for (var i = 0; i < org.teams.length; i++) {
+      var t = org.teams[i], tn = t.name.trim();
+      if (tn === '') { return (i + 1) + '번째 팀의 이름을 입력하십시오.'; }
+      if (seen[tn]) { return "팀 이름 '" + tn + "'이(가) 겹칩니다."; }
+      seen[tn] = true;
+      for (var j = 0; j < t.people.length; j++) {
+        if (t.people[j].name.trim() === '') { return "'" + tn + "' 팀 " + (j + 1) + '번 인원의 이름을 입력하십시오.'; }
+      }
+    }
+    return null;
+  }
+
+  function saveOrg() {
+    org.dept = $('orgDept').value;
+    org.friday = $('orgFriday').value;
+    var problem = orgProblem();
+    if (problem) { showMsg(problem + ' 저장되지 않았습니다.', 'error', 'orgMsg'); return; }
+    if (new Date(org.friday + 'T00:00:00').getDay() !== 5 &&
+        !window.confirm('선택한 날짜가 금요일이 아닙니다. 그대로 저장하시겠습니까?')) {
+      showMsg('저장하지 않았습니다.', 'warn', 'orgMsg');
+      return;
+    }
+    var cur = loadData();
+    var used = Object.create(null);
+    org.teams.forEach(function (t) { t.people.forEach(function (p) { if (p.id) { used[p.id] = true; } }); });
+    var members = [];
+    var keep = Object.create(null);
+    var dept = org.dept.trim();
+    org.teams.forEach(function (t) {
+      t.people.forEach(function (p) {
+        var id = p.id || nextId(used);
+        keep[id] = true;
+        members.push({ id: id, dept: dept, trainee: p.trainee === true, team: t.name.trim(), name: p.name.trim(), position: p.position.trim() });
+      });
+    });
+    var attendance = cur.attendance.filter(function (a) { return a && keep[a.id]; });
+    var dropped = cur.attendance.length - attendance.length;
+    if (cur.members.length > 0 && (orgWasMulti || dropped > 0) &&
+        !window.confirm((orgWasMulti ? '여러 부서의 자료가 저장되어 있습니다. ' : '') +
+          '저장하면 명단에서 빠진 사번의 근태 ' + dropped + '건이 지워지고 부서원 명단이 바뀝니다. 계속하시겠습니까?')) {
+      showMsg('저장하지 않았습니다. 자료는 그대로입니다.', 'warn', 'orgMsg');
+      return;
+    }
+    if (!saveData({ targetFriday: org.friday, members: members, attendance: attendance })) {
+      showMsg('이 브라우저에서는 저장할 수 없습니다.', 'error', 'orgMsg');
+      return;
+    }
+    showMsg('조직을 저장했습니다. ' + dept + ' · ' + org.teams.length + '개 팀 · ' + members.length + '명', 'ok', 'orgMsg');
+    loadOrg();
+    renderOrg();
+    renderState();
+  }
+
+  $('addTeamBtn').addEventListener('click', function () {
+    org.dept = $('orgDept').value;
+    org.friday = $('orgFriday').value;
+    org.teams.push({ name: '', people: [blankPerson()] });
+    renderOrg();
+  });
+  $('resetOrgBtn').addEventListener('click', function () {
+    loadOrg();
+    renderOrg();
+    showMsg('저장된 상태로 되돌렸습니다.', 'ok', 'orgMsg');
+  });
+  $('saveOrgBtn').addEventListener('click', saveOrg);
+
+  loadOrg();
+  renderOrg();
   renderState();
 })();
 </script>

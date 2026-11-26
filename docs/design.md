@@ -7,7 +7,7 @@
 
 | 역할 | 페이지·하는 일 | 담당 파일 (이 사람만 고친다) | 읽기만 하는 파일 |
 |---|---|---|---|
-| ① 통합·화면 | 시작 페이지 — 메뉴, A·B 바로가기(PC 폭에서는 요약도 함께) · 요약(`summary`) — 저장된 데이터 요약(대상 금요일·부서원 수·근태 입력 건수·미입력자·확인 필요) · 자료관리(관리자용, `admin`) — 표본·백업 가져오기, 가상 표본 채우기, 백업 내보내기, 비우기 | `tools/index.html`, `tools/pages/summary.html`, `tools/pages/admin.html`, `tools/assets/common.js`, `tools/assets/style.css`, `README.md`, `docs/demo_script.md` | ②·③의 파일 |
+| ① 통합·화면 | 시작 페이지 — 메뉴, A·B 바로가기(PC 폭에서는 요약도 함께) · 요약(`summary`) — 저장된 데이터 요약(대상 금요일·부서원 수·근태 입력 건수·미입력자·확인 필요) · 자료관리(관리자용, `admin`) — 표본·백업 가져오기, 가상 표본 채우기, 백업 내보내기, 비우기, **조직 설정**(부서명·팀 수·팀별 인원 수·이름·직책·대상 금요일을 입력해 부서원 명단으로 저장) | `tools/index.html`, `tools/pages/summary.html`, `tools/pages/admin.html`, `tools/assets/common.js`, `tools/assets/style.css`, `README.md`, `docs/demo_script.md` | ②·③의 파일 |
 | ② 기능 A | 근태 입력(`IN`) — 가상 사번을 고르고 대상 금요일의 부재 유형·부재 시간을 입력 → 저장 | `tools/pages/IN.html`, `tools/assets/IN.js` | `common.js`, `style.css`, `data/` |
 | ③ 기능 B | 충족 현황(`board`) — 개인별 달성, 부서별 충족 판정, 미입력자 목록, 확인 필요(중복 입력) 목록 | `tools/pages/board.html`, `tools/assets/board.js` | `common.js`, `style.css`, `data/` |
 | ④ 검증·데이터 | — | `data/team_sample.json`, `tests/acceptance.md`, `tests/run_acceptance.py` | ①②③의 파일 |
@@ -25,10 +25,12 @@
 | 칸 이름 | 뜻 | 형식 | 쓰는 페이지 | 읽는 페이지 |
 |---|---|---|---|---|
 | `targetFriday` | 판정 대상 금요일 | 문자열 `"YYYY-MM-DD"` | ① 자료관리(표본·백업 가져오기) | ② IN, ③ board, ① 시작·요약 |
-| `members` | 부서원 명단 | 배열, 한 건 = `{id, dept, trainee}` — `id` 가상 사번(문자열), `dept` 가상 부서명, `trainee` 교육대상자면 `true` | ① 자료관리(표본·백업 가져오기), ② IN(고른 부서원의 `trainee`만) | ② IN(사번 선택 목록), ③ board, ① 시작·요약 |
+| `members` | 부서원 명단 | 배열, 한 건 = `{id, dept, trainee}` + 선택 칸 `team`·`name`·`position` — `id` 사번(문자열, 조직 설정에서는 `E001` 식으로 자동 부여), `dept` 부서명, `trainee` 교육대상자면 `true`, `team` 팀 이름, `name` 이름, `position` 직책(문자열). 선택 칸이 없는 예전 표본도 그대로 읽는다 | ① 자료관리(표본·백업 가져오기·조직 설정), ② IN(고른 부서원의 `trainee`만) | ② IN(사번 선택 목록), ③ board, ① 시작·요약 |
 | `attendance` | 금요일 근태 입력 | 배열, 한 건 = `{id, date, absentType, absentHours}` — `absentType`은 `"없음"`·`"휴가"`·`"출장"` 중 하나, `absentHours`는 0~8 숫자 | ② IN(입력·수정), ① 자료관리(가져오기) | ③ board, ① 시작·요약(건수) |
 
 - ②는 `loadData()`로 전체를 읽어 `attendance`와 고른 부서원의 `trainee`(교육대상자 표시)만 바꾼 뒤 `saveData()`로 통째로 씁니다. 다른 칸은 건드리지 않습니다. 저장 JSON 모양은 바뀌지 않습니다.
+- 조직 설정(①)에서 명단을 저장하면 `members`를 통째로 바꾸고, 명단에서 빠진 사번의 `attendance`는 지웁니다(남기면 '명단에 없는 사번'으로 보임). 입력한 이름·직책은 이 브라우저의 localStorage와 백업 JSON에만 있고 저장소(레포)·표본 파일에는 넣지 않습니다. [가정]
+- `IN`은 고른 사번에 이미 저장된 대상 금요일 근태가 있으면 그 값을 입력 칸에 불러옵니다(저장 JSON 모양은 그대로).
 - `IN`에서 같은 사번·같은 날짜를 다시 저장하면 기존 건을 고칩니다(새 건을 더하지 않음). [가정]
 - 예시 1건:
 

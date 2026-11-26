@@ -34,7 +34,11 @@
     data.members.forEach(function (m) {
       if (m && typeof m.id === 'string' && m.id !== '' && !seen[m.id]) {
         seen[m.id] = true;
-        members.push({ id: m.id, dept: typeof m.dept === 'string' && m.dept !== '' ? m.dept : '부서 없음', trainee: m.trainee === true });
+        members.push({
+          id: m.id, dept: typeof m.dept === 'string' && m.dept !== '' ? m.dept : '부서 없음', trainee: m.trainee === true,
+          name: typeof m.name === 'string' ? m.name : '', position: typeof m.position === 'string' ? m.position : '',
+          team: typeof m.team === 'string' ? m.team : ''
+        });
       }
     });
 
@@ -52,18 +56,18 @@
     var missing = [];
     members.forEach(function (m) {
       var recs = byId[m.id] || [];
-      var p = { id: m.id, dept: m.dept, trainee: m.trainee, record: recs.length === 1 ? recs[0] : null, status: '' };
+      var p = { id: m.id, dept: m.dept, trainee: m.trainee, name: m.name, position: m.position, team: m.team, record: recs.length === 1 ? recs[0] : null, status: '' };
       if (m.trainee) {
         p.status = '평가 제외(교육대상자)';
       } else if (recs.length > 1) {
         p.status = '확인 필요';
-        flags.push({ id: m.id, dept: m.dept, reason: '중복 입력 — 같은 금요일 근태가 ' + recs.length + '건' });
+        flags.push({ id: who(m), dept: m.dept, reason: '중복 입력 — 같은 금요일 근태가 ' + recs.length + '건' });
       } else if (recs.length === 0) {
         p.status = '미입력';
         missing.push(p);
       } else if (!validRecord(recs[0])) {
         p.status = '확인 필요';
-        flags.push({ id: m.id, dept: m.dept, reason: '값 확인 필요 — 부재 유형 또는 부재 시간(0~8)이 맞지 않음' });
+        flags.push({ id: who(m), dept: m.dept, reason: '값 확인 필요 — 부재 유형 또는 부재 시간(0~8)이 맞지 않음' });
       } else {
         p.status = isAchieved(recs[0]) ? '달성' : '미달성';
       }
@@ -91,6 +95,11 @@
     });
 
     return { people: people, depts: depts, missing: missing, flags: flags };
+  }
+
+  /* 목록에 쓰는 사람 표시: 이름이 있으면 '이름(사번)' */
+  function who(p) {
+    return p.name ? p.name + (p.position ? ' ' + p.position : '') + ' (' + p.id + ')' : p.id;
   }
 
   function pct(n, m) {
@@ -127,7 +136,7 @@
     $('missingCount').textContent = '(' + r.missing.length + '명)';
     $('missingList').innerHTML = r.missing.length === 0
       ? '<p class="empty">미입력자가 없습니다.</p>'
-      : '<ul class="notice">' + r.missing.map(function (p) { return '<li>' + badge('미입력') + '<span>' + esc(p.id) + ' · ' + esc(p.dept) + '</span></li>'; }).join('') + '</ul>';
+      : '<ul class="notice">' + r.missing.map(function (p) { return '<li>' + badge('미입력') + '<span>' + esc(who(p)) + ' · ' + (p.team ? esc(p.team) + ' · ' : '') + esc(p.dept) + '</span></li>'; }).join('') + '</ul>';
 
     $('flagCount').textContent = '(' + r.flags.length + '건)';
     $('flagList').innerHTML = r.flags.length === 0
@@ -187,16 +196,60 @@
     var shown = r.people.filter(function (p) {
       return (dept === '' || p.dept === dept) && (!todo || TODO.indexOf(p.status) >= 0);
     });
-    var t = '<thead><tr><th>사번</th><th>부서</th><th>부재</th><th>결과</th></tr></thead><tbody>';
+    var named = r.people.some(function (p) { return p.name !== ''; });
+    var cols = named
+      ? [['name', '이름'], ['position', '직책'], ['team', '팀'], ['dept', '부서'], ['absent', '부재'], ['status', '결과']]
+      : [['id', '사번'], ['dept', '부서'], ['absent', '부재'], ['status', '결과']];
+    if (!cols.some(function (c) { return c[0] === sortKey; })) { sortKey = ''; }
+    shown = sortPeople(shown);
+    var t = '<thead><tr>' + cols.map(function (c) {
+      var on = c[0] === sortKey;
+      var mark = on ? (sortDir > 0 ? ' ▲' : ' ▼') : '';
+      return '<th aria-sort="' + (on ? (sortDir > 0 ? 'ascending' : 'descending') : 'none') + '">' +
+        '<button type="button" class="sort" data-key="' + c[0] + '">' + c[1] + mark + '</button></th>';
+    }).join('') + '</tr></thead><tbody>';
     shown.forEach(function (p) {
       var absent = p.record ? esc(p.record.absentType) + ' ' + esc(p.record.absentHours) + '시간' : '-';
-      t += '<tr><td>' + esc(p.id) + '</td><td>' + esc(p.dept) + '</td><td>' + absent + '</td><td>' + badge(p.status) + '</td></tr>';
+      t += '<tr>' + (named
+        ? '<td>' + esc(p.name || p.id) + '</td><td>' + esc(p.position || '-') + '</td><td>' + esc(p.team || '-') + '</td>'
+        : '<td>' + esc(p.id) + '</td>') +
+        '<td>' + esc(p.dept) + '</td><td>' + absent + '</td><td>' + badge(p.status) + '</td></tr>';
     });
     $('personTable').innerHTML = t + '</tbody>';
     $('personTable').hidden = shown.length === 0;
     $('filterEmpty').hidden = shown.length !== 0;
     $('filterCount').textContent = (dept !== '' || todo) ? r.people.length + '명 중 ' + shown.length + '명 표시' : '';
   }
+
+  /* 줄 눌러 정렬: 머리글을 누르면 오름차순, 다시 누르면 내림차순. 보는 순서만 바꾼다(저장 자료 그대로) */
+  var sortKey = '';
+  var sortDir = 1;
+  var STATUS_ORDER = ['확인 필요', '미입력', '미달성', '달성', '평가 제외(교육대상자)'];
+
+  function sortValue(p, key) {
+    if (key === 'absent') { return p.record && typeof p.record.absentHours === 'number' ? p.record.absentHours : -1; }
+    if (key === 'status') { return STATUS_ORDER.indexOf(p.status); }
+    return String(p[key] || '');
+  }
+
+  function sortPeople(list) {
+    if (!sortKey) { return list; }
+    return list.map(function (p, i) { return { p: p, i: i }; }).sort(function (a, b) {
+      var x = sortValue(a.p, sortKey), y = sortValue(b.p, sortKey), c;
+      if (typeof x === 'number') { c = x - y; } else { c = x.localeCompare(y, 'ko', { numeric: true }); }
+      return c !== 0 ? c * sortDir : a.i - b.i;
+    }).map(function (o) { return o.p; });
+  }
+
+  $('personTable').addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('button.sort') : null;
+    if (!b || !lastResult) { return; }
+    var key = b.getAttribute('data-key');
+    if (sortKey === key) { sortDir = -sortDir; } else { sortKey = key; sortDir = 1; }
+    renderPeople(lastResult);
+    var again = $('personTable').querySelector('button.sort[data-key="' + key + '"]');
+    if (again) { again.focus(); }
+  });
 
   $('deptFilter').addEventListener('change', function () { if (lastResult) { renderPeople(lastResult); } });
   $('todoOnly').addEventListener('change', function () { if (lastResult) { renderPeople(lastResult); } });
