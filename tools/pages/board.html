@@ -22,6 +22,8 @@
   .chart-row .none { color: var(--muted); font-size: var(--fs-small); }
   .chart-legend { margin: var(--s1) 0 var(--s3); }
   @media (max-width: 640px) { .chart-row { grid-template-columns: 64px 1fr 52px 64px; gap: 6px; } }
+  th button.sort { border: 0; background: none; padding: 0; min-height: 0; font: inherit; color: inherit; cursor: pointer; }
+  th button.sort:hover { color: var(--text); background: none; }
   .filters .check { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; cursor: pointer; }
   .filters .check input { width: 20px; height: 20px; min-height: 0; }
   @media (max-width: 640px) {
@@ -48,7 +50,7 @@
     <a href="admin.html">자료관리(관리자용)</a>
   </nav>
 
-  <div class="msg warn" id="needData" hidden>자료관리(관리자용) 탭에서 표본 자료를 먼저 가져오십시오. 부서원 명단이 있어야 판정할 수 있습니다.</div>
+  <div class="msg warn" id="needData" hidden>자료관리(관리자용) 탭에서 조직을 설정하거나 표본 자료를 먼저 가져오십시오. 부서원 명단이 있어야 판정할 수 있습니다.</div>
 
   <div id="report" hidden>
     <div class="card gray">
@@ -87,7 +89,7 @@
       </div>
       <div class="table-wrap"><table id="personTable"></table></div>
       <div class="msg warn" id="filterEmpty" hidden>조건에 맞는 부서원이 없습니다.</div>
-      <p class="confirm">개인별 달성·미달성은 모두 담당 검토 후 확정입니다.</p>
+      <p class="confirm">머리글을 누르면 그 칸으로 정렬합니다(다시 누르면 반대 순서). 개인별 달성·미달성은 모두 담당 검토 후 확정입니다.</p>
     </div>
   </div>
 </div>
