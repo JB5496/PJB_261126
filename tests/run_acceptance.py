@@ -43,18 +43,26 @@ def _read(p):
 
 
 def ac5_no_external_send():
-    """AC5 데이터를 외부로 보내지 않는다 — 결과물 파일에 외부 주소·외부 요청이 없는지 본다."""
+    """AC5 design.md 6절의 공유 저장소 말고는 외부로 보내지 않는다 — 외부 주소 글자가 없고, 외부 요청은 common.js에만 있는지 본다."""
     targets = [p for p in TOOLS.rglob("*") if p.is_file()] + \
               [p for p in (ROOT / "scripts").rglob("*") if p.is_file()]
     if not [p for p in targets if p.name != ".gitkeep"]:
         return None, "tools/에 아직 파일 없음"
+    # design.md 6절: 공유 저장소 한 곳(Supabase)만 허용 — 그 호출(fetch)은 common.js 안에만 둔다.
+    # 주소는 코드에 쓰지 않고 관리자가 실행 중에 넣으므로, http(s) 주소 글자는 어느 파일에도 없어야 한다.
+    design = _read(ROOT / "docs/design.md") if (ROOT / "docs/design.md").is_file() else ""
+    shared_ok = bool(re.search(r"## 6\. 공유 저장소[\s\S]*?정해진 곳: \*\*Supabase", design))
+    common = (ROOT / "tools/assets/common.js").resolve()
     hits = []
     for p in targets:
         text = _read(p)
-        for word in ("http://", "https://", "fetch(", "XML" + "HttpRequest", "requests."):   # 문자열을 나눠 둔다(자료 금지어 검사와 겹치지 않게)
+        for word in ("http://", "https://", "fetch(", "XML" + "HttpRequest", "requests.", "WebSocket", "sendBeacon"):   # 문자열을 나눠 둔다(자료 금지어 검사와 겹치지 않게)
             if word in text:
+                if word == "fetch(" and shared_ok and p.resolve() == common:
+                    continue
                 hits.append(f"{p.relative_to(ROOT).as_posix()}: {word}")
-    return not hits, "외부 전송 흔적 없음" if not hits else "; ".join(hits[:3])
+    why = "외부 전송 흔적 없음" + (" (공유 저장소 호출은 common.js에만 — design.md 6절)" if shared_ok else "")
+    return not hits, why if not hits else "; ".join(hits[:3])
 
 
 def f1_files_exist():
