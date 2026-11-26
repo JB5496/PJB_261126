@@ -111,13 +111,28 @@
     if (updated) { data.attendance[found] = record; } else { data.attendance.push(record); }
     var trainee = $('isTrainee').checked;
     data.members.forEach(function (m) { if (m && m.id === id) { m.trainee = trainee; } });
+    var doneText = (updated ? '기존 입력이 수정되었습니다: ' : '저장되었습니다: ') + id + ' · ' + type + ' ' + record.absentHours + '시간' +
+      (trainee ? ' · 교육대상자(평가 제외)' : '');
+
+    /* 공유 저장소에 연결돼 있으면 거기에 먼저 저장한다. 실패하면 저장하지 않은 것으로 알린다(다시 누르면 됨). */
+    if (getShared()) {
+      $('saveBtn').disabled = true;
+      showResult('저장하는 중입니다…', 'warn');
+      sharedSaveAttendance(record, trainee).then(function (r) {
+        $('saveBtn').disabled = false;
+        if (!r.ok) { showResult(r.message + ' 저장되지 않았습니다.', 'error'); return; }
+        showResult(doneText + ' (모두에게 반영됨)', 'ok');
+        render();
+        loadExisting(loadData());
+      });
+      return;
+    }
 
     if (!saveData(data)) {
       showResult('이 브라우저에서는 저장할 수 없습니다.', 'error');
       return;
     }
-    showResult((updated ? '기존 입력이 수정되었습니다: ' : '저장되었습니다: ') + id + ' · ' + type + ' ' + record.absentHours + '시간' +
-      (trainee ? ' · 교육대상자(평가 제외)' : ''), 'ok');
+    showResult(doneText, 'ok');
     render();
     loadExisting(loadData());
   }
@@ -130,5 +145,14 @@
 
   $('memberId').addEventListener('change', onPick);
   $('saveBtn').addEventListener('click', onSave);
+
+  /* 공유 저장소 상태 한 줄 */
+  function showSync(s) {
+    var el = $('syncState');
+    el.textContent = s.message || '';
+    el.className = 'sync-state ' + (!s.shared ? 'local' : (s.ok ? 'ok' : 'warn'));
+  }
+  /* 다른 사람이 명단·근태를 바꾸면 목록과 건수만 다시 그린다(입력 중인 칸은 그대로) */
+  startAutoSync(function (s) { showSync(s); if (s.changed) { render(); } });
   render();
 })();

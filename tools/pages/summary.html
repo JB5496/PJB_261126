@@ -34,6 +34,7 @@
     <a href="board.html">충족 현황</a>
     <a href="admin.html">자료관리(관리자용)</a>
   </nav>
+  <p class="sync-state" id="syncState" role="status" aria-live="polite"></p>
 
   <div class="section">
     <h2><span class="accent">이번 주</span> 요약</h2>
@@ -92,6 +93,14 @@
     $('sumEmpty').hidden = d.members.length > 0;
   }
 
+  /* 공유 저장소 상태 한 줄 */
+  function showSync(s) {
+    var el = document.getElementById('syncState');
+    el.textContent = s.message || '';
+    el.className = 'sync-state ' + (!s.shared ? 'local' : (s.ok ? 'ok' : 'warn'));
+  }
+
+  startAutoSync(function (s) { showSync(s); if (s.changed) { renderSummary(); } });
   renderSummary();
 })();
 </script>

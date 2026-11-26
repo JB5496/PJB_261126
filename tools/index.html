@@ -48,6 +48,7 @@
     <a href="pages/board.html">충족 현황</a>
     <a href="pages/admin.html">자료관리(관리자용)</a>
   </nav>
+  <p class="sync-state" id="syncState" role="status" aria-live="polite"></p>
 
   <!-- PC 화면: 요약을 시작 페이지에 합쳐 보인다 (휴대폰은 요약 탭) -->
   <div class="section pc-only">
@@ -118,6 +119,14 @@
     $('sumEmpty').hidden = d.members.length > 0;
   }
 
+  /* 공유 저장소 상태 한 줄 */
+  function showSync(s) {
+    var el = document.getElementById('syncState');
+    el.textContent = s.message || '';
+    el.className = 'sync-state ' + (!s.shared ? 'local' : (s.ok ? 'ok' : 'warn'));
+  }
+
+  startAutoSync(function (s) { showSync(s); if (s.changed) { renderSummary(); } });
   renderSummary();
 })();
 </script>

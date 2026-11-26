@@ -30,7 +30,7 @@
     <h1><span class="accent">자료관리</span> (관리자용)</h1>
     <span class="practice-tag">LH 실습용 · 가상 자료</span>
   </div>
-  <p class="sub">조직 설정, 표본·백업 가져오기, 가상 표본 채우기, 백업 내보내기, 비우기를 합니다. 비우기는 되돌릴 수 없으니 먼저 백업을 내보내십시오.</p>
+  <p class="sub">조직 설정, 표본·백업 가져오기, 가상 표본 채우기, 백업 내보내기, 비우기를 합니다. 비우기는 되돌릴 수 없으니 먼저 백업을 내보내십시오. 공유 저장소에 연결하면 여러 사람이 같은 자료를 봅니다.</p>
 
   <nav class="menu" aria-label="메뉴">
     <a href="../index.html">시작</a>
@@ -39,6 +39,32 @@
     <a href="board.html">충족 현황</a>
     <a href="admin.html" aria-current="page">자료관리(관리자용)</a>
   </nav>
+  <p class="sync-state" id="syncState" role="status" aria-live="polite"></p>
+
+  <div class="card">
+    <h2><span class="accent">공유 저장소</span> 연결 (Supabase)</h2>
+    <p class="privacy">연결하면 모든 기기의 입력이 한곳(Supabase)에 쌓이고, 다른 사람 화면에 5초 안에 반영됩니다. 연결 정보는 이 브라우저에만 저장되고 저장소(레포)에는 올라가지 않습니다. 설정 방법은 <code>docs/supabase_setup.md</code>를 보십시오.</p>
+    <div id="sharedForm">
+      <div class="org-top">
+        <div><label for="shUrl">Project URL</label><input id="shUrl" type="text" autocomplete="off" placeholder="Supabase 설정 → API 의 Project URL"></div>
+        <div><label for="shKey">anon public 키</label><input id="shKey" type="password" autocomplete="off" placeholder="Supabase 설정 → API 의 anon public"></div>
+      </div>
+      <div class="org-top">
+        <div><label for="shCode">접근 코드</label><input id="shCode" type="password" autocomplete="off" placeholder="설정 SQL에 넣은 접근 코드"></div>
+      </div>
+      <div class="row"><button type="button" class="primary" id="shConnectBtn">연결</button></div>
+    </div>
+    <div id="sharedOn" hidden>
+      <p class="state" id="shState"></p>
+      <div class="row">
+        <button type="button" id="shLinkBtn">직원용 링크 복사</button>
+        <button type="button" class="danger" id="shOffBtn">이 기기 연결 끊기</button>
+      </div>
+      <input id="shLink" type="text" readonly hidden style="width:100%;margin-top:var(--s2)" aria-label="직원용 링크">
+      <p class="privacy" style="margin-top:var(--s2)">직원용 링크에는 접근 코드가 들어 있습니다. 부서원에게만 전달하십시오. 링크는 배포 주소에서 복사해야 휴대폰에서 열립니다. 접근 코드를 바꾸면(설정 SQL 마지막 줄) 예전 링크는 막힙니다.</p>
+    </div>
+    <div class="msg" id="shMsg" role="status" aria-live="polite" hidden></div>
+  </div>
 
   <div class="card">
     <h2>자료 관리</h2>
@@ -103,6 +129,13 @@
       return;
     }
     var copy = JSON.parse(JSON.stringify(SAMPLE));
+    if (getShared()) {
+      sharedImport(copy).then(function (r) {
+        showMsg(r.ok ? '가상 표본을 공유 저장소에 채웠습니다. 부서원 ' + copy.members.length + '명, 근태 ' + copy.attendance.length + '건(같은 사람·날짜가 여러 건이면 마지막 건만 남음)' : r.message, r.ok ? 'ok' : 'error');
+        renderState(); loadOrg(); renderOrg();
+      });
+      return;
+    }
     if (!saveData(copy)) { showMsg('이 브라우저에서는 저장할 수 없습니다.', 'error'); return; }
     showMsg('가상 표본을 채웠습니다. 부서원 ' + copy.members.length + '명, 근태 ' + copy.attendance.length + '건', 'ok');
     renderState(); loadOrg(); renderOrg();
@@ -123,6 +156,10 @@
     showMsg('백업 파일(team2g_backup.json)을 내려받았습니다.', 'ok');
   });
   $('clearBtn').addEventListener('click', function () {
+    if (getShared()) {
+      showMsg('공유 저장소에 연결된 동안에는 비울 수 없습니다(모두의 자료이기 때문). 조직 설정으로 명단을 바꾸거나, 이 기기 연결을 먼저 끊으십시오.', 'warn');
+      return;
+    }
     if (!window.confirm('저장된 자료를 모두 지우시겠습니까? 필요하면 먼저 백업을 내보내십시오.')) { return; }
     clearData();
     showMsg('자료를 비웠습니다. 가져오기로 표본을 다시 불러올 수 있습니다.', 'ok');
@@ -295,6 +332,16 @@
       showMsg('저장하지 않았습니다. 자료는 그대로입니다.', 'warn', 'orgMsg');
       return;
     }
+    if (getShared()) {
+      $('saveOrgBtn').disabled = true;
+      sharedSaveOrg(org.friday, members).then(function (r) {
+        $('saveOrgBtn').disabled = false;
+        if (!r.ok) { showMsg(r.message + ' 저장되지 않았습니다.', 'error', 'orgMsg'); return; }
+        showMsg('조직을 공유 저장소에 저장했습니다. ' + dept + ' · ' + org.teams.length + '개 팀 · ' + members.length + '명', 'ok', 'orgMsg');
+        loadOrg(); renderOrg(); renderState();
+      });
+      return;
+    }
     if (!saveData({ targetFriday: org.friday, members: members, attendance: attendance })) {
       showMsg('이 브라우저에서는 저장할 수 없습니다.', 'error', 'orgMsg');
       return;
@@ -318,6 +365,84 @@
   });
   $('saveOrgBtn').addEventListener('click', saveOrg);
 
+  /* ---- 공유 저장소 연결 ---- */
+  function showSync(s) {
+    var el = $('syncState');
+    el.textContent = s.message || '';
+    el.className = 'sync-state ' + (!s.shared ? 'local' : (s.ok ? 'ok' : 'warn'));
+  }
+
+  /* 연결·끊기 직후에는 다음 자동 읽기(5초)를 기다리지 않고 상태 줄을 바로 바꾼다 */
+  function renderShared() {
+    showSync(getShared()
+      ? { shared: true, ok: true, message: '공유 저장소 연결됨' }
+      : { shared: false, ok: false, message: '이 기기에만 저장 중(공유 저장소 연결 안 됨)' });
+    var c = getShared();
+    $('sharedForm').hidden = !!c;
+    $('sharedOn').hidden = !c;
+    if (c) { $('shState').textContent = '연결됨: ' + c.url; }
+    $('clearBtn').disabled = !!c;
+  }
+
+  $('shConnectBtn').addEventListener('click', function () {
+    var url = $('shUrl').value.trim(), key = $('shKey').value.trim(), code = $('shCode').value;
+    if (!/^[a-z]+:[/][/][^ ]+$/i.test(url) || key === '' || code === '') {
+      showMsg('Project URL·anon public 키·접근 코드를 모두 넣으십시오.', 'error', 'shMsg');
+      return;
+    }
+    var local = loadData();
+    setShared({ url: url, key: key, code: code });
+    $('shConnectBtn').disabled = true;
+    syncPull().then(function (r) {
+      $('shConnectBtn').disabled = false;
+      if (!r.ok) {
+        clearShared();
+        saveData(local);
+        showMsg(r.message + ' 연결하지 않았습니다.', 'error', 'shMsg');
+        renderShared();
+        return;
+      }
+      $('shKey').value = ''; $('shCode').value = '';
+      var remote = loadData();
+      if (remote.members.length === 0 && local.members.length > 0 &&
+          window.confirm('공유 저장소가 비어 있습니다. 이 기기의 자료(부서원 ' + local.members.length + '명, 근태 ' + local.attendance.length + '건)를 올리시겠습니까?')) {
+        sharedImport(local).then(function (u) {
+          showMsg(u.ok ? '연결했고, 이 기기 자료를 공유 저장소에 올렸습니다.' : u.message, u.ok ? 'ok' : 'error', 'shMsg');
+          renderShared(); renderState(); loadOrg(); renderOrg();
+        });
+        return;
+      }
+      showMsg('연결했습니다. 공유 저장소 자료를 불러왔습니다.', 'ok', 'shMsg');
+      renderShared(); renderState(); loadOrg(); renderOrg();
+    });
+  });
+
+  $('shOffBtn').addEventListener('click', function () {
+    if (!window.confirm('이 기기의 공유 저장소 연결을 끊으시겠습니까? 공유 저장소의 자료는 지워지지 않습니다.')) { return; }
+    clearShared();
+    showMsg('연결을 끊었습니다. 이제 이 기기에만 저장합니다.', 'ok', 'shMsg');
+    renderShared();
+  });
+
+  $('shLinkBtn').addEventListener('click', function () {
+    var link = makeJoinLink(new URL('../index.html', location.href).href);
+    var box = $('shLink');
+    box.value = link; box.hidden = false; box.select();
+    var done = function () { showMsg('직원용 링크를 복사했습니다. 부서원에게만 전달하십시오.', 'ok', 'shMsg'); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(link).then(done, function () { showMsg('아래 칸의 링크를 길게 눌러 복사하십시오.', 'warn', 'shMsg'); });
+    } else {
+      showMsg('아래 칸의 링크를 복사하십시오.', 'warn', 'shMsg');
+    }
+  });
+
+  /* 다른 사람이 바꾸면 상태 줄만 다시 그린다(조직 입력 칸은 입력 중일 수 있어 그대로) */
+  startAutoSync(function (s) {
+    showSync(s);
+    if (s.changed) { renderState(); }
+  });
+
+  renderShared();
   loadOrg();
   renderOrg();
   renderState();

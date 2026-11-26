@@ -265,5 +265,14 @@
   $('tabMissing').addEventListener('click', function () { selectTab('missing'); });
   $('tabFlags').addEventListener('click', function () { selectTab('flags'); });
 
+  /* 공유 저장소 상태 한 줄 */
+  function showSync(s) {
+    var el = document.getElementById('syncState');
+    el.textContent = s.message || '';
+    el.className = 'sync-state ' + (!s.shared ? 'local' : (s.ok ? 'ok' : 'warn'));
+  }
+
+  /* 다른 사람이 저장하면 5초 안에 다시 그린다 */
+  startAutoSync(function (s) { showSync(s); if (s.changed) { render(); } });
   render();
 })();

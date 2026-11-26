@@ -133,3 +133,11 @@ th.num, td.num { text-align: right; }
 @media (min-width: 641px) { .mobile-only { display: none !important; } }
 @media (max-width: 640px) { .pc-only { display: none !important; } }
 [hidden] { display: none !important; }
+
+/* 공유 저장소 상태 한 줄(모든 페이지) */
+.sync-state { font-size: var(--fs-small); margin: calc(-1 * var(--s2)) 0 var(--s3); padding-left: 18px; position: relative; color: var(--muted); }
+.sync-state:empty { display: none; }
+.sync-state::before { content: ""; position: absolute; left: 0; top: .55em; width: 10px; height: 10px; border-radius: 50%; background: var(--gray); }
+.sync-state.ok::before { background: var(--ok); }
+.sync-state.warn { color: var(--warn); font-weight: 700; }
+.sync-state.warn::before { background: var(--bad); }
